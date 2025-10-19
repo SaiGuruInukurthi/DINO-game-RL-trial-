@@ -27,3 +27,37 @@ PROJECT DECISIONS & SETUP:
    - Conda environment: DINO
    - Primary dependencies: pygame, gym, tensorflow
 
+6. Project Implementation Structure (October 19, 2025):
+   - Decision: Separate notebooks for environment and model
+   - Rationale: Better organization, easier debugging and iteration
+   - Implementation order: Environment first (using Pygame), then model
+   - Files to create:
+     * dino_environment.ipynb - Game environment with Gym interface
+     * dino_model.ipynb - DQN model training (to be created later)
+
+ 
+7. Code movement (October 19, 2025):
+   - Action: Extracted the game implementation from `dino_environment.ipynb` into a
+     standalone Python module at `src/dino_game.py` to improve reusability and allow
+     the training notebook to import the environment logic.
+   - Rationale: A .py module is easier to test, import, and version-control than code
+     embedded inside a notebook. Manual play mode and observation/step APIs are included.
+
+8. Dependencies update (October 19, 2025):
+   - Action: Switched from deprecated `gym` to `gymnasium` (the maintained replacement)
+   - Reason: gym has been unmaintained since 2022 and doesn't support NumPy 2.0
+   - Installation: `pip install gymnasium` in DINO conda environment
+   - Code changes: `import gym` → `import gymnasium as gym`
+
+9. WSL/Headless compatibility fix (October 19, 2025):
+   - Issue: Kernel was crashing due to Pygame trying to initialize OpenGL/X11 in WSL
+   - Solution: Set SDL_VIDEODRIVER='dummy' when no DISPLAY is available
+   - Location: Added to both src/dino_game.py and notebook imports
+   - Effect: Prevents kernel crashes in notebook environments without X server
+
+10. Platform Switch (October 19, 2025):
+   - Decision: Switching from WSL to native Windows for development
+   - Reason: WSL kernel crashes with Pygame visualization, better to develop/test on Windows
+   - Impact: Will be able to see game window and test manual controls properly
+   - Note: The SDL_VIDEODRIVER fix remains in code for future headless/server deployment
+

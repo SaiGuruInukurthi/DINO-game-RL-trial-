@@ -11,8 +11,14 @@ This project trains a deep reinforcement learning agent to master the classic Ch
 - **Python**: 3.14
 - **Deep Learning Framework**: TensorFlow
 - **Game Engine**: Pygame
-- **RL Environment**: OpenAI Gym
+- **RL Environment**: Gymnasium (OpenAI Gym replacement)
 - **Environment Manager**: Conda (environment: DINO)
+
+### Key Dependencies
+- `pygame` - Game rendering and physics
+- `gymnasium` - RL environment interface
+- `tensorflow` - Deep learning framework
+- `numpy` - Numerical operations
 
 ## 📋 Project Structure
 
@@ -21,9 +27,10 @@ Dino RL/
 ├── dino_rl_plan.txt           # Detailed project roadmap
 ├── PROJECT_CHANGELOG.txt       # Project decisions and changes
 ├── README.md                   # This file
-├── model.ipynb                 # Main model implementation (Coming soon)
-├── requirements.txt            # Python dependencies (Coming soon)
-└── src/                        # Source code (Coming soon)
+├── dino_environment.ipynb      # Game environment with Gym wrapper
+├── src/
+│   └── dino_game.py           # Core game implementation (Pygame)
+└── requirements.txt            # Python dependencies (Coming soon)
 ```
 
 ## 🚀 Getting Started
@@ -49,8 +56,59 @@ conda activate DINO
 
 3. Install dependencies:
 ```bash
-pip install pygame gym tensorflow numpy matplotlib
+pip install pygame gymnasium tensorflow numpy matplotlib
 ```
+
+## 🎮 Game Environment
+
+### Running the Game Manually
+
+You can play the game yourself to understand the environment:
+
+```bash
+# Activate the DINO conda environment first
+conda activate DINO
+
+# Run the game in manual control mode
+python -m src.dino_game
+```
+
+**Controls:**
+- `SPACE` or `UP ARROW`: Jump
+- `DOWN ARROW`: Duck
+- Close window to quit
+
+### Using in Jupyter Notebook
+
+The game environment is set up for RL training in `dino_environment.ipynb`:
+
+1. Open the notebook in VS Code or Jupyter
+2. Run the cells to:
+   - Import the game module
+   - Create the `DinoEnv` Gym wrapper
+   - Test with random or manual control
+
+### Environment Details
+
+**Observation Space** (8 features):
+- Dinosaur Y position (normalized)
+- Dinosaur velocity (normalized)
+- Distance to next obstacle (normalized)
+- Obstacle height (normalized)
+- Obstacle Y position (normalized)
+- Is jumping (boolean)
+- Is ducking (boolean)
+- Current score (normalized)
+
+**Action Space** (3 discrete actions):
+- 0: Do nothing (run)
+- 1: Jump
+- 2: Duck
+
+**Reward Structure:**
+- +0.1 per frame survived
+- +10.0 for passing an obstacle
+- -100.0 for collision (game over)
 
 ## 🎮 How It Works
 
