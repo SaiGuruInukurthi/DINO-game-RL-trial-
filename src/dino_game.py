@@ -22,7 +22,7 @@ import numpy as np
 if not os.environ.get('DISPLAY'):
     os.environ['SDL_VIDEODRIVER'] = 'dummy'
 
-import pygame
+import pygame_ce as pygame
 
 # Game constants
 SCREEN_WIDTH = 800
