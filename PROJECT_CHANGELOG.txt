@@ -1,0 +1,29 @@
+DINO RL PROJECT - CHANGE LOG & DECISIONS
+=========================================
+
+Date: October 19, 2025
+
+PROJECT DECISIONS & SETUP:
+--------------------------
+
+1. Python Version: 3.14 (latest version)
+   - Using conda environment named "DINO"
+
+2. Framework Choices:
+   - Deep Learning: TensorFlow (instead of PyTorch)
+   - Game Engine: Pygame
+   - RL Environment: Gym
+
+3. Project Structure:
+   - Model implementation: Jupyter Notebook (.ipynb file)
+   - Code organization: Guided implementation approach
+
+4. Version Control:
+   - Git repository initialized
+   - Remote: https://github.com/SaiGuruInukurthi/DINO-game-RL-trial-
+   - README.md created
+
+5. Development Environment:
+   - Conda environment: DINO
+   - Primary dependencies: pygame, gym, tensorflow
+
