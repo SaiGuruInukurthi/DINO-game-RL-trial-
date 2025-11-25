@@ -117,3 +117,21 @@ PROJECT DECISIONS & SETUP:
    - Confirmed gymnasium 1.2.1 already installed
    - Browser environment fully functional and tested
 
+16. Screenshot Capture Optimization (November 25, 2025):
+   - Fixed stale element error by re-finding elements after page refresh
+   - Implemented canvas-first screenshot strategy (captures only game, no ads)
+   - Added intelligent fallback to full page with automatic cropping
+   - Improved grayscale conversion with LANCZOS resampling for better quality
+   - Added debug mode to visualize capture regions and troubleshoot
+   - Screenshot resolution: 80x80 grayscale optimized for CNN input
+   - Verified screenshots capture game state with minimal noise
+
+17. Ad Blocking Implementation (November 25, 2025):
+   - Added JavaScript-based ad removal on page load
+   - Hides all ads, iframes, and content below game canvas
+   - Chrome options configured to block popup ads and notifications
+   - Set black background for better visual contrast
+   - Ad blocking re-applied after each reset/page refresh
+   - Canvas-only screenshot strategy ensures ads never appear in observations
+   - Performance impact: minimal (ads hidden, not removed from DOM)
+

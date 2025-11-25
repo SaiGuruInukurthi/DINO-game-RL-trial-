@@ -114,6 +114,13 @@ class BrowserDinoEnv(gym.Env):
         chrome_options.add_argument('--disable-logging')
         chrome_options.add_argument('--log-level=3')
         
+        # Block ads and unnecessary content
+        chrome_options.add_argument('--disable-popup-blocking')
+        chrome_options.add_experimental_option('prefs', {
+            'profile.default_content_setting_values.notifications': 2,
+            'profile.default_content_setting_values.ads': 2
+        })
+        
         # Initialize driver
         if chromedriver_path:
             service = Service(chromedriver_path)
@@ -125,6 +132,35 @@ class BrowserDinoEnv(gym.Env):
         # Navigate to game
         self.driver.get(self.game_url)
         time.sleep(2)  # Wait for page load
+        
+        # Hide ads and unnecessary elements via JavaScript
+        try:
+            self.driver.execute_script("""
+                // Hide ads and unnecessary content
+                var ads = document.querySelectorAll('iframe, .ad, .advertisement, [id*="ad"], [class*="ad"]');
+                ads.forEach(function(ad) { 
+                    if (ad.tagName !== 'CANVAS') {
+                        ad.style.display = 'none'; 
+                    }
+                });
+                
+                // Hide everything below the canvas
+                var canvas = document.querySelector('canvas');
+                if (canvas) {
+                    var parent = canvas.parentElement;
+                    var siblings = Array.from(parent.parentElement.children);
+                    var canvasIndex = siblings.indexOf(parent);
+                    for (var i = canvasIndex + 1; i < siblings.length; i++) {
+                        siblings[i].style.display = 'none';
+                    }
+                }
+                
+                // Set page background to black for better contrast
+                document.body.style.backgroundColor = '#000000';
+            """)
+            print("✓ Ads and unnecessary content hidden")
+        except Exception as e:
+            print(f"Warning: Could not hide ads: {e}")
         
         # Find game canvas/element
         try:
@@ -139,30 +175,72 @@ class BrowserDinoEnv(gym.Env):
         self.game_element.send_keys(Keys.SPACE)
         time.sleep(0.1)
     
-    def _get_screenshot(self) -> np.ndarray:
+    def _get_screenshot(self, debug=False) -> np.ndarray:
         """
         Capture game screenshot and preprocess it.
+        
+        Args:
+            debug: If True, save debug images showing crop regions
         
         Returns:
             80x80 grayscale numpy array
         """
-        # Take screenshot
-        png = self.driver.get_screenshot_as_png()
-        img = Image.open(io.BytesIO(png))
+        try:
+            # Try to get canvas screenshot first (most accurate - no ads)
+            canvas = self.driver.find_element(By.TAG_NAME, 'canvas')
+            png = canvas.screenshot_as_png
+            img = Image.open(io.BytesIO(png))
+            
+            if debug:
+                img.save('debug_canvas.png')
+                print(f"Debug: Canvas size = {img.size}")
+            
+        except Exception as e:
+            # Fallback to full page screenshot
+            if debug:
+                print(f"Canvas capture failed: {e}, using full page")
+            png = self.driver.get_screenshot_as_png()
+            img = Image.open(io.BytesIO(png))
+            
+            if debug:
+                img.save('debug_fullpage.png')
+                print(f"Debug: Full page size = {img.size}")
         
         # Convert to grayscale
-        img = img.convert('L')
+        img_gray = img.convert('L')
         
-        # Crop to game area (adjust based on actual game dimensions)
-        # You may need to tune these values based on the actual game layout
-        width, height = img.size
-        game_region = img.crop((0, int(height * 0.3), width, int(height * 0.7)))
+        # For canvas, use the full image (it should be just the game)
+        # For full page, crop to where game typically appears
+        width, height = img_gray.size
+        
+        if width > 600 or height > 400:
+            # Full page screenshot - crop to game area
+            # Chrome Dino game is typically centered
+            left = int(width * 0.15)
+            top = int(height * 0.25)
+            right = int(width * 0.85)
+            bottom = int(height * 0.65)
+            game_region = img_gray.crop((left, top, right, bottom))
+            
+            if debug:
+                img_gray.save('debug_grayscale.png')
+                game_region.save('debug_cropped.png')
+                print(f"Debug: Cropped to {game_region.size} from region ({left},{top},{right},{bottom})")
+        else:
+            # Canvas screenshot - use as-is
+            game_region = img_gray
+            if debug:
+                game_region.save('debug_canvas_grayscale.png')
         
         # Resize to 80x80
-        game_region = game_region.resize((80, 80), Image.BILINEAR)
+        game_region_resized = game_region.resize((80, 80), Image.Resampling.LANCZOS)
+        
+        if debug:
+            game_region_resized.save('debug_final_80x80.png')
+            print(f"Debug: Final size = {game_region_resized.size}")
         
         # Convert to numpy array
-        img_array = np.array(game_region, dtype=np.uint8)
+        img_array = np.array(game_region_resized, dtype=np.uint8)
         
         return img_array
     
@@ -211,6 +289,33 @@ class BrowserDinoEnv(gym.Env):
         # Refresh page to restart game
         self.driver.refresh()
         time.sleep(2)
+        
+        # Re-hide ads after refresh
+        try:
+            self.driver.execute_script("""
+                var ads = document.querySelectorAll('iframe, .ad, .advertisement, [id*="ad"], [class*="ad"]');
+                ads.forEach(function(ad) { 
+                    if (ad.tagName !== 'CANVAS') {
+                        ad.style.display = 'none'; 
+                    }
+                });
+                
+                var canvas = document.querySelector('canvas');
+                if (canvas) {
+                    var parent = canvas.parentElement;
+                    var siblings = Array.from(parent.parentElement.children);
+                    var canvasIndex = siblings.indexOf(parent);
+                    for (var i = canvasIndex + 1; i < siblings.length; i++) {
+                        siblings[i].style.display = 'none';
+                    }
+                }
+                document.body.style.backgroundColor = '#000000';
+            """)
+        except:
+            pass
+        
+        # Re-find game element after refresh (prevents stale element error)
+        self.game_element = self.driver.find_element(By.TAG_NAME, 'body')
         
         # Start game
         self._start_game()
