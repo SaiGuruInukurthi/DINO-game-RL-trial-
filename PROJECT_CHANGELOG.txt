@@ -61,14 +61,6 @@ PROJECT DECISIONS & SETUP:
    - Impact: Will be able to see game window and test manual controls properly
    - Note: The SDL_VIDEODRIVER fix remains in code for future headless/server deployment
 
-11. Architecture Change - Browser Automation (November 25, 2025):
-   - Decision: Switching from Pygame to Selenium browser automation
-   - Target: Train agent on actual Chrome Dino game at https://chromedino.com/
-   - Reason: User goal is to train agent on real browser game, not custom implementation
-   - Training constraints: 20fps target (RTX 3050 Mobile + i5-12450H)
-   - Plan: Support 2-3 parallel browser instances for faster training
-   - Implementation: Selenium + ChromeDriver + image processing for state observation
-
 11. Pygame Installation Fix (October 19, 2025):
    - Issue: pygame wouldn't install on Python 3.14 (setuptools error)
    - Solution: Switched to pygame-ce (pygame community edition)
@@ -87,4 +79,41 @@ PROJECT DECISIONS & SETUP:
    - Tests include: space validation, reset function, action testing, random agent
    - Added visual testing cells for manual play and observation
    - Environment complete and ready for DQN model development
+
+14. MAJOR PIVOT: Browser-Based Implementation (November 25, 2025):
+   - Decision: Switching from Pygame to browser-based Chrome Dino game
+   - Target: Actual Chrome Dino game at https://chromedino.com/
+   - Technology Stack:
+     * Selenium WebDriver 4.38.0 for browser automation
+     * ChromeDriver for Chrome control
+     * Pillow for screenshot capture and image processing
+     * Screenshot rate: 20 FPS (50ms per frame, optimized for i5-12450H + RTX 3050 Mobile)
+   - Rationale: 
+     * Train on the ACTUAL game instead of recreation
+     * More realistic and challenging environment
+     * Better generalization to real Chrome Dino game
+     * Eliminates need to replicate game physics exactly
+   - Impact:
+     * Pygame implementation archived (dino_game.py, dino_environment.ipynb)
+     * New implementation: src/browser_dino_env.py (complete)
+     * New documentation: BROWSER_SETUP.md
+   - Architecture:
+     * Screenshot-based observations (80x80 grayscale game frames)
+     * Action injection via Selenium (Space/Down arrow keys)
+     * Gymnasium-compatible interface
+     * 20fps capture rate (50ms per frame)
+   - Implementation:
+     * BrowserDinoEnv class with full Gymnasium interface
+     * Automatic browser initialization and game loading
+     * Screenshot capture and preprocessing pipeline
+     * Action space: Discrete(2) - [run, jump] (duck support ready)
+     * Observation space: Box(0, 255, (80, 80), uint8)
+     * Reward: +0.1/frame, +score bonus, -10.0 game over
+
+15. Dependencies Installation (November 25, 2025):
+   - Installed selenium 4.38.0 in DINO conda environment
+   - Confirmed pillow 12.0.0 already installed
+   - Confirmed numpy 2.3.4 already installed
+   - Confirmed gymnasium 1.2.1 already installed
+   - Browser environment fully functional and tested
 
