@@ -250,24 +250,33 @@ class BrowserDinoEnv(gym.Env):
         Extract current score from the game using JavaScript API.
         
         Returns:
-            Current game score (distance traveled)
+            Current game score (displayed score)
         """
         try:
-            # Access the game's internal distance counter
-            # distanceRan is the actual distance traveled (score)
-            score = self.driver.execute_script(
-                "return Runner && Runner.instance_ ? "
-                "Math.floor(Runner.instance_.distanceRan) : 0"
-            )
+            # Get the displayed score using the game's distance meter
+            # distanceRan needs to be divided by coefficient to get displayed score
+            # The coefficient is typically stored in distanceMeter.config.COEFFICIENT
+            score = self.driver.execute_script("""
+                if (!Runner || !Runner.instance_) return 0;
+                
+                var distanceMeter = Runner.instance_.distanceMeter;
+                if (!distanceMeter) return 0;
+                
+                // Get the actual displayed distance (this handles the coefficient)
+                return Math.floor(distanceMeter.getActualDistance(Runner.instance_.distanceRan));
+            """)
             return int(score) if score else 0
         except Exception as e:
-            # Fallback: try to read score from canvas if available
+            # Fallback: try manual calculation with typical coefficient
             try:
-                score_text = self.driver.execute_script(
+                raw_distance = self.driver.execute_script(
                     "return Runner && Runner.instance_ ? "
-                    "Runner.instance_.distanceMeter.getActualDistance(0) : 0"
+                    "Runner.instance_.distanceRan : 0"
                 )
-                return int(score_text) if score_text else 0
+                # Typical coefficient is 0.025 (raw_distance / 0.025 ≈ raw_distance * 0.025 for display)
+                # Actually it's raw_distance * 0.025 to get score
+                # Or raw_distance / 40 approximately
+                return int(raw_distance * 0.025) if raw_distance else 0
             except:
                 return 0
     
@@ -387,16 +396,21 @@ class BrowserDinoEnv(gym.Env):
         self.is_game_over = self._is_game_over()
         
         # Calculate reward
-        reward = 0.1  # Small reward for staying alive
+        reward = 0.0  # No base reward - must earn it!
         
-        # Score-based reward
+        # Score-based reward (primary incentive)
         score_increase = self.score - self.prev_score
         if score_increase > 0:
-            reward += score_increase * 0.1
+            # Reward proportional to progress
+            reward += score_increase * 0.5  # Increased multiplier
+        
+        # Small survival bonus only if making progress
+        if score_increase > 0:
+            reward += 0.1
         
         self.prev_score = self.score
         
-        # Game over penalty
+        # Game over penalty (severe to discourage dying)
         terminated = self.is_game_over
         if terminated:
             reward = -10.0
