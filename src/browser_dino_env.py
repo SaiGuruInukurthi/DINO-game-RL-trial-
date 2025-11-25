@@ -379,19 +379,22 @@ class BrowserDinoEnv(gym.Env):
         """
         start_time = time.time()
         
+        # CRITICAL: Get screenshot BEFORE action and game state check
+        # This ensures agent sees the obstacle BEFORE collision, not after
+        obs = self._get_screenshot()
+        
         # Execute action
         if action == 1:  # Jump
             self.game_element.send_keys(Keys.SPACE)
         # Note: Duck (action 2) would use Keys.DOWN if needed
         
-        # Small delay to let action take effect
+        # Small delay to let action take effect and game to update
         time.sleep(0.05)
         
         # Update frame counter
         self.frames_alive += 1
         
-        # Get new state
-        obs = self._get_screenshot()
+        # Get game state AFTER action has been processed
         self.score = self._get_score()
         self.is_game_over = self._is_game_over()
         
