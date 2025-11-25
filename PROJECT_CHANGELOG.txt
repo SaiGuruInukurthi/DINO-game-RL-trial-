@@ -135,3 +135,13 @@ PROJECT DECISIONS & SETUP:
    - Canvas-only screenshot strategy ensures ads never appear in observations
    - Performance impact: minimal (ads hidden, not removed from DOM)
 
+18. Screenshot Capture Refinement (November 25, 2025):
+   - Refined canvas-first strategy to capture only game content (600x150)
+   - Eliminated scoreboard, buttons, and UI elements from captures
+   - Improved fallback cropping to top 35% of page (max 300px)
+   - Screenshots now contain pure game state: dino, obstacles, ground, score
+   - Verified 80x80 final resolution maintains all critical spatial information
+   - Created SCREENSHOT_CAPTURE.md comprehensive documentation
+   - Added visual examples and complete pipeline description
+   - Debug mode generates verification images for troubleshooting
+

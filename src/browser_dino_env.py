@@ -186,53 +186,53 @@ class BrowserDinoEnv(gym.Env):
             80x80 grayscale numpy array
         """
         try:
-            # Try to get canvas screenshot first (most accurate - no ads)
+            # Try to get canvas screenshot first (most accurate - pure game, no extras)
             canvas = self.driver.find_element(By.TAG_NAME, 'canvas')
             png = canvas.screenshot_as_png
             img = Image.open(io.BytesIO(png))
             
             if debug:
                 img.save('debug_canvas.png')
-                print(f"Debug: Canvas size = {img.size}")
+                print(f"Debug: Canvas captured - size = {img.size}")
+            
+            # Canvas is pure game content - use it directly
+            game_region = img.convert('L')
             
         except Exception as e:
-            # Fallback to full page screenshot
+            # Fallback: This should rarely happen, but if canvas capture fails,
+            # get full page and crop to just the game area (top portion only)
             if debug:
-                print(f"Canvas capture failed: {e}, using full page")
+                print(f"Canvas capture failed: {e}, using full page with precise crop")
+            
             png = self.driver.get_screenshot_as_png()
             img = Image.open(io.BytesIO(png))
             
             if debug:
                 img.save('debug_fullpage.png')
                 print(f"Debug: Full page size = {img.size}")
-        
-        # Convert to grayscale
-        img_gray = img.convert('L')
-        
-        # For canvas, use the full image (it should be just the game)
-        # For full page, crop to where game typically appears
-        width, height = img_gray.size
-        
-        if width > 600 or height > 400:
-            # Full page screenshot - crop to game area
-            # Chrome Dino game is typically centered
-            left = int(width * 0.15)
-            top = int(height * 0.25)
-            right = int(width * 0.85)
-            bottom = int(height * 0.65)
+            
+            # Convert to grayscale first
+            img_gray = img.convert('L')
+            
+            # Crop to ONLY the game canvas area (top ~150-200px of the page)
+            # The game is at the top, everything else (scores, buttons) is below
+            width, height = img_gray.size
+            
+            # Crop to just the top portion where the game canvas is
+            # Typically the canvas is in the top 200-300px
+            left = 0
+            top = 0
+            right = width
+            bottom = min(int(height * 0.35), 300)  # Only top 35% or 300px max
+            
             game_region = img_gray.crop((left, top, right, bottom))
             
             if debug:
                 img_gray.save('debug_grayscale.png')
                 game_region.save('debug_cropped.png')
-                print(f"Debug: Cropped to {game_region.size} from region ({left},{top},{right},{bottom})")
-        else:
-            # Canvas screenshot - use as-is
-            game_region = img_gray
-            if debug:
-                game_region.save('debug_canvas_grayscale.png')
+                print(f"Debug: Cropped to {game_region.size} from top portion only")
         
-        # Resize to 80x80
+        # Resize to 80x80 for neural network
         game_region_resized = game_region.resize((80, 80), Image.Resampling.LANCZOS)
         
         if debug:
