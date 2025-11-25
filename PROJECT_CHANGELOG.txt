@@ -61,6 +61,14 @@ PROJECT DECISIONS & SETUP:
    - Impact: Will be able to see game window and test manual controls properly
    - Note: The SDL_VIDEODRIVER fix remains in code for future headless/server deployment
 
+11. Architecture Change - Browser Automation (November 25, 2025):
+   - Decision: Switching from Pygame to Selenium browser automation
+   - Target: Train agent on actual Chrome Dino game at https://chromedino.com/
+   - Reason: User goal is to train agent on real browser game, not custom implementation
+   - Training constraints: 20fps target (RTX 3050 Mobile + i5-12450H)
+   - Plan: Support 2-3 parallel browser instances for faster training
+   - Implementation: Selenium + ChromeDriver + image processing for state observation
+
 11. Pygame Installation Fix (October 19, 2025):
    - Issue: pygame wouldn't install on Python 3.14 (setuptools error)
    - Solution: Switched to pygame-ce (pygame community edition)

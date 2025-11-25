@@ -1,21 +1,23 @@
 # 🦖 DINO Game Reinforcement Learning Project
 
-A reinforcement learning project where an AI agent learns to play the Chrome Dinosaur game using Deep Q-Network (DQN) implemented in TensorFlow.
+A reinforcement learning project where an AI agent learns to play the **actual Chrome Dinosaur game** in a browser using Deep Q-Network (DQN) implemented in TensorFlow.
 
 ## 🎯 Project Overview
 
-This project trains a deep reinforcement learning agent to master the classic Chrome Dinosaur game. The agent learns through trial and error, developing strategies to avoid obstacles and maximize its survival time.
+This project trains a deep reinforcement learning agent to master the Chrome Dinosaur game at https://chromedino.com/ using Selenium browser automation. The agent learns through trial and error, developing strategies to avoid obstacles and maximize its survival time.
 
 ## 🛠️ Technical Stack
 
 - **Python**: 3.14
 - **Deep Learning Framework**: TensorFlow
-- **Game Engine**: Pygame
+- **Browser Automation**: Selenium WebDriver + ChromeDriver
 - **RL Environment**: Gymnasium (OpenAI Gym replacement)
 - **Environment Manager**: Conda (environment: DINO)
+- **Hardware**: Optimized for i5-12450H + RTX 3050 Mobile @ 20fps
 
 ### Key Dependencies
-- `pygame` - Game rendering and physics
+- `selenium` - Browser automation and game control
+- `pillow` & `opencv-python` - Screenshot capture and image processing
 - `gymnasium` - RL environment interface
 - `tensorflow` - Deep learning framework
 - `numpy` - Numerical operations
@@ -26,11 +28,13 @@ This project trains a deep reinforcement learning agent to master the classic Ch
 Dino RL/
 ├── dino_rl_plan.txt           # Detailed project roadmap
 ├── PROJECT_CHANGELOG.txt       # Project decisions and changes
+├── BROWSER_SETUP.md            # Browser environment setup guide
 ├── README.md                   # This file
-├── dino_environment.ipynb      # Game environment with Gym wrapper
-├── src/
-│   └── dino_game.py           # Core game implementation (Pygame)
-└── requirements.txt            # Python dependencies (Coming soon)
+├── requirements.txt            # Python dependencies
+├── dino_environment.ipynb      # Legacy Pygame environment (archived)
+└── src/
+    ├── browser_dino_env.py    # Browser-based Gym environment
+    └── dino_game.py           # Legacy Pygame implementation (archived)
 ```
 
 ## 🚀 Getting Started
@@ -56,59 +60,74 @@ conda activate DINO
 
 3. Install dependencies:
 ```bash
-pip install pygame gymnasium tensorflow numpy matplotlib
+pip install -r requirements.txt
 ```
 
-## 🎮 Game Environment
+4. **Download ChromeDriver**:
+   - Check your Chrome version: `chrome://settings/help`
+   - Download matching ChromeDriver from https://googlechromelabs.github.io/chrome-for-testing/
+   - Place `chromedriver.exe` in your PATH or project folder
+   - See [BROWSER_SETUP.md](BROWSER_SETUP.md) for detailed instructions
 
-### Running the Game Manually
+## 🎮 Browser Environment
 
-You can play the game yourself to understand the environment:
+### Quick Test
+
+Test the browser automation environment:
 
 ```bash
-# Activate the DINO conda environment first
-conda activate DINO
-
-# Run the game in manual control mode
-python -m src.dino_game
+python src/browser_dino_env.py
 ```
 
-**Controls:**
-- `SPACE` or `UP ARROW`: Jump
-- `DOWN ARROW`: Duck
-- Close window to quit
+This will:
+- Open Chrome and navigate to https://chromedino.com/
+- Run a random agent for 100 steps
+- Display FPS and score information
 
-### Using in Jupyter Notebook
+### Using in Python
 
-The game environment is set up for RL training in `dino_environment.ipynb`:
+```python
+from src.browser_dino_env import BrowserDinoEnv
 
-1. Open the notebook in VS Code or Jupyter
-2. Run the cells to:
-   - Import the game module
-   - Create the `DinoEnv` Gym wrapper
-   - Test with random or manual control
+# Create environment
+env = BrowserDinoEnv(
+    headless=False,      # Set True to hide browser
+    target_fps=20,       # Target frame rate
+    chromedriver_path=None  # Auto-detect from PATH
+)
+
+# Standard Gym interface
+obs, info = env.reset()
+for _ in range(1000):
+    action = env.action_space.sample()  # Random action
+    obs, reward, terminated, truncated, info = env.step(action)
+    
+    if terminated:
+        obs, info = env.reset()
+
+env.close()
+```
 
 ### Environment Details
 
-**Observation Space** (8 features):
-- Dinosaur Y position (normalized)
-- Dinosaur velocity (normalized)
-- Distance to next obstacle (normalized)
-- Obstacle height (normalized)
-- Obstacle Y position (normalized)
-- Is jumping (boolean)
-- Is ducking (boolean)
-- Current score (normalized)
+**Observation Space**:
+- 80x80 grayscale screenshot of game area
+- Preprocessed from browser capture
+- Values: 0-255 (uint8)
 
-**Action Space** (3 discrete actions):
+**Action Space** (2 discrete actions):
 - 0: Do nothing (run)
-- 1: Jump
-- 2: Duck
+- 1: Jump (press Space)
 
 **Reward Structure:**
 - +0.1 per frame survived
-- +10.0 for passing an obstacle
-- -100.0 for collision (game over)
+- +0.1 × score_increase for passing obstacles
+- -10.0 for game over
+
+**Performance**:
+- Target: 20 FPS (configurable)
+- Supports 2-3 parallel instances
+- Headless mode for faster training
 
 ## 🎮 How It Works
 

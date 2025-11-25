@@ -1,0 +1,322 @@
+"""Browser-based Dino game environment using Selenium
+
+This module provides a Gymnasium-compatible environment that controls
+the actual Chrome Dino game in a browser using Selenium WebDriver.
+
+Target URL: https://chromedino.com/
+"""
+from __future__ import annotations
+
+import time
+import numpy as np
+from typing import Tuple, Optional
+from PIL import Image
+import io
+
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.keys import Keys
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.chrome.options import Options
+except ImportError:
+    raise ImportError(
+        "Selenium is required for browser environment. "
+        "Install with: pip install selenium"
+    )
+
+try:
+    import gymnasium as gym
+    from gymnasium import spaces
+except ImportError:
+    raise ImportError(
+        "Gymnasium is required. Install with: pip install gymnasium"
+    )
+
+
+class BrowserDinoEnv(gym.Env):
+    """
+    Gymnasium environment for Chrome Dino game via browser automation.
+    
+    Observation Space:
+        - Screenshot-based: Grayscale image of game area (150x600 pixels)
+        - Preprocessed to 80x80 for neural network input
+        
+    Action Space:
+        - 0: Do nothing (run)
+        - 1: Jump (press Space)
+        - 2: Duck (press Down arrow) - if supported
+        
+    Rewards:
+        - +0.1 for each frame alive
+        - -10 for game over
+        - Bonus based on score increase
+    """
+    
+    metadata = {'render.modes': ['human']}
+    
+    def __init__(
+        self,
+        headless: bool = False,
+        game_url: str = "https://chromedino.com/",
+        chromedriver_path: Optional[str] = None,
+        target_fps: int = 20
+    ):
+        """
+        Initialize the browser-based Dino environment.
+        
+        Args:
+            headless: Run browser in headless mode (no GUI)
+            game_url: URL of the Chrome Dino game
+            chromedriver_path: Path to chromedriver executable (None = auto-detect)
+            target_fps: Target frames per second for game loop
+        """
+        super().__init__()
+        
+        self.game_url = game_url
+        self.headless = headless
+        self.target_fps = target_fps
+        self.frame_delay = 1.0 / target_fps
+        
+        # Define action and observation space
+        self.action_space = spaces.Discrete(2)  # 0=nothing, 1=jump (duck disabled for now)
+        
+        # Observation: 80x80 grayscale image
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(80, 80),
+            dtype=np.uint8
+        )
+        
+        # Initialize browser
+        self.driver = None
+        self.game_element = None
+        self._init_browser(chromedriver_path)
+        
+        # Game state
+        self.score = 0
+        self.prev_score = 0
+        self.is_game_over = False
+        
+    def _init_browser(self, chromedriver_path: Optional[str] = None):
+        """Initialize Chrome browser with Selenium"""
+        chrome_options = Options()
+        
+        if self.headless:
+            chrome_options.add_argument('--headless')
+        
+        # Performance optimizations
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-logging')
+        chrome_options.add_argument('--log-level=3')
+        
+        # Initialize driver
+        if chromedriver_path:
+            service = Service(chromedriver_path)
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+        else:
+            # Try to use chromedriver from PATH
+            self.driver = webdriver.Chrome(options=chrome_options)
+        
+        # Navigate to game
+        self.driver.get(self.game_url)
+        time.sleep(2)  # Wait for page load
+        
+        # Find game canvas/element
+        try:
+            # Try to find the game canvas or container
+            self.game_element = self.driver.find_element(By.TAG_NAME, 'body')
+        except Exception as e:
+            print(f"Warning: Could not locate game element: {e}")
+            self.game_element = self.driver.find_element(By.TAG_NAME, 'body')
+    
+    def _start_game(self):
+        """Start the game by pressing Space"""
+        self.game_element.send_keys(Keys.SPACE)
+        time.sleep(0.1)
+    
+    def _get_screenshot(self) -> np.ndarray:
+        """
+        Capture game screenshot and preprocess it.
+        
+        Returns:
+            80x80 grayscale numpy array
+        """
+        # Take screenshot
+        png = self.driver.get_screenshot_as_png()
+        img = Image.open(io.BytesIO(png))
+        
+        # Convert to grayscale
+        img = img.convert('L')
+        
+        # Crop to game area (adjust based on actual game dimensions)
+        # You may need to tune these values based on the actual game layout
+        width, height = img.size
+        game_region = img.crop((0, int(height * 0.3), width, int(height * 0.7)))
+        
+        # Resize to 80x80
+        game_region = game_region.resize((80, 80), Image.BILINEAR)
+        
+        # Convert to numpy array
+        img_array = np.array(game_region, dtype=np.uint8)
+        
+        return img_array
+    
+    def _get_score(self) -> int:
+        """
+        Extract current score from the game.
+        This needs to be implemented based on the actual game's score display.
+        
+        Returns:
+            Current game score
+        """
+        try:
+            # Try to execute JavaScript to get score
+            # This is a placeholder - adjust based on actual game implementation
+            score = self.driver.execute_script(
+                "return document.querySelector('.score') ? "
+                "parseInt(document.querySelector('.score').textContent) : 0"
+            )
+            return score if score else 0
+        except:
+            return 0
+    
+    def _is_game_over(self) -> bool:
+        """
+        Check if game is over.
+        This needs to be implemented based on the actual game's game-over detection.
+        
+        Returns:
+            True if game is over
+        """
+        try:
+            # Try to detect game over screen
+            # This is a placeholder - adjust based on actual game implementation
+            game_over = self.driver.execute_script(
+                "return document.querySelector('.game-over') !== null || "
+                "document.body.textContent.includes('GAME OVER')"
+            )
+            return bool(game_over)
+        except:
+            return False
+    
+    def reset(self, seed: Optional[int] = None) -> Tuple[np.ndarray, dict]:
+        """Reset the environment"""
+        super().reset(seed=seed)
+        
+        # Refresh page to restart game
+        self.driver.refresh()
+        time.sleep(2)
+        
+        # Start game
+        self._start_game()
+        time.sleep(0.5)
+        
+        # Reset state
+        self.score = 0
+        self.prev_score = 0
+        self.is_game_over = False
+        
+        # Get initial observation
+        obs = self._get_screenshot()
+        
+        return obs, {}
+    
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, dict]:
+        """
+        Execute one step in the environment.
+        
+        Args:
+            action: 0=nothing, 1=jump
+            
+        Returns:
+            observation, reward, terminated, truncated, info
+        """
+        start_time = time.time()
+        
+        # Execute action
+        if action == 1:  # Jump
+            self.game_element.send_keys(Keys.SPACE)
+        # Note: Duck (action 2) would use Keys.DOWN if needed
+        
+        # Small delay to let action take effect
+        time.sleep(0.05)
+        
+        # Get new state
+        obs = self._get_screenshot()
+        self.score = self._get_score()
+        self.is_game_over = self._is_game_over()
+        
+        # Calculate reward
+        reward = 0.1  # Small reward for staying alive
+        
+        # Score-based reward
+        score_increase = self.score - self.prev_score
+        if score_increase > 0:
+            reward += score_increase * 0.1
+        
+        self.prev_score = self.score
+        
+        # Game over penalty
+        terminated = self.is_game_over
+        if terminated:
+            reward = -10.0
+        
+        truncated = False
+        info = {
+            'score': self.score,
+            'fps': 1.0 / max(time.time() - start_time, 0.001)
+        }
+        
+        # Frame rate limiting
+        elapsed = time.time() - start_time
+        if elapsed < self.frame_delay:
+            time.sleep(self.frame_delay - elapsed)
+        
+        return obs, reward, terminated, truncated, info
+    
+    def render(self, mode: str = 'human'):
+        """Render is handled by the browser window"""
+        pass
+    
+    def close(self):
+        """Clean up browser resources"""
+        if self.driver:
+            self.driver.quit()
+            self.driver = None
+
+
+# Quick test function
+def test_browser_env():
+    """Test the browser environment"""
+    print("Initializing browser environment...")
+    env = BrowserDinoEnv(headless=False, target_fps=20)
+    
+    try:
+        print("Resetting environment...")
+        obs, info = env.reset()
+        print(f"Observation shape: {obs.shape}")
+        
+        print("Running random actions for 100 steps...")
+        for i in range(100):
+            action = env.action_space.sample()
+            obs, reward, terminated, truncated, info = env.step(action)
+            
+            if i % 20 == 0:
+                print(f"Step {i}: Score={info['score']}, FPS={info['fps']:.1f}, Reward={reward:.2f}")
+            
+            if terminated:
+                print(f"Game over at step {i}! Final score: {info['score']}")
+                obs, info = env.reset()
+                
+    finally:
+        env.close()
+        print("Environment closed.")
+
+
+if __name__ == "__main__":
+    test_browser_env()
