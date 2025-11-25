@@ -1,9 +1,9 @@
 Training Attempt #1
 Windows: 4
-Resume: True
-Started: 2025-11-25 14:56:28.324060
-Initial ε: 0.9550
-Initial steps: 2,273
+Resume: False
+Started: 2025-11-25 15:47:23.660964
+Initial ε: 1.0000
+Initial steps: 0
 ================================================================================
 
-Ep 1: AvgScore=23, MaxScore=43, Reward=8120.14, ε=0.1630 🏆
+Ep 1: AvgScore=32, MaxScore=52, Reward=9330.38, ε=0.2080 🏆

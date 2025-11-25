@@ -58,7 +58,7 @@ class MultiWindowDinoEnv:
         
         # Observation/action spaces
         self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32)
-        self.action_space = spaces.Discrete(3)  # 0=run, 1=jump, 2=duck
+        self.action_space = spaces.Discrete(2)  # 0=run, 1=jump (no duck for now)
         
         # Browser instances (one per window)
         self.drivers: List[webdriver.Chrome] = []

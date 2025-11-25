@@ -66,8 +66,8 @@ class DinoStateEnv(gym.Env):
         self.game_url = game_url
         self.headless = headless
         
-        # Action space: 0=run, 1=jump, 2=duck
-        self.action_space = spaces.Discrete(3)
+        # Action space: 0=run, 1=jump (no duck for now - birds later)
+        self.action_space = spaces.Discrete(2)
         
         # Observation: 8 numerical features (much simpler than 80x80 image!)
         self.observation_space = spaces.Box(
