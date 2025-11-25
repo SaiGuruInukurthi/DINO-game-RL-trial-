@@ -1,40 +1,43 @@
 # 🦖 DINO Game Reinforcement Learning Project
 
-A reinforcement learning project where an AI agent learns to play the **actual Chrome Dinosaur game** in a browser using Deep Q-Network (DQN) implemented in TensorFlow.
+A reinforcement learning project where an AI agent learns to play the Chrome Dinosaur game using Deep Q-Network (DQN) implemented in **PyTorch**.
 
 ## 🎯 Project Overview
 
-This project trains a deep reinforcement learning agent to master the Chrome Dinosaur game at https://chromedino.com/ using Selenium browser automation. The agent learns through trial and error, developing strategies to avoid obstacles and maximize its survival time.
+This project trains a deep reinforcement learning agent to master the Chrome Dinosaur game using a local Pygame replica. The agent learns through trial and error, developing strategies to avoid obstacles (cacti for now, birds later) and maximize its survival time.
+
+### Credits
+- **Game Engine**: [Chrome-Dino-Runner](https://github.com/dhhruv/Chrome-Dino-Runner) by [dhhruv](https://github.com/dhhruv) - A Pygame replica of the Chrome Dino game
 
 ## 🛠️ Technical Stack
 
-- **Python**: 3.14
-- **Deep Learning Framework**: TensorFlow
-- **Browser Automation**: Selenium WebDriver + ChromeDriver
+- **Python**: 3.11 (Conda DINO_TF environment)
+- **Deep Learning Framework**: PyTorch 2.5.1 + CUDA 12.1
+- **Game Engine**: Pygame (Chrome-Dino-Runner)
 - **RL Environment**: Gymnasium (OpenAI Gym replacement)
-- **Environment Manager**: Conda (environment: DINO)
-- **Hardware**: Optimized for i5-12450H + RTX 3050 Mobile @ 20fps
+- **Hardware**: Optimized for i5-12450H + RTX 3050 Mobile (4GB VRAM)
 
 ### Key Dependencies
-- `selenium` - Browser automation and game control
-- `pillow` & `opencv-python` - Screenshot capture and image processing
+- `pygame` - Game engine for local training
 - `gymnasium` - RL environment interface
-- `tensorflow` - Deep learning framework
+- `torch` - Deep learning framework (with CUDA)
 - `numpy` - Numerical operations
 
 ## 📋 Project Structure
 
 ```
 Dino RL/
-├── dino_rl_plan.txt           # Detailed project roadmap
-├── PROJECT_CHANGELOG.txt       # Project decisions and changes
-├── BROWSER_SETUP.md            # Browser environment setup guide
-├── README.md                   # This file
-├── requirements.txt            # Python dependencies
-├── dino_environment.ipynb      # Legacy Pygame environment (archived)
+├── dino_rl_plan.txt              # Detailed project roadmap
+├── PROJECT_CHANGELOG.txt          # Project decisions and changes
+├── README.md                      # This file
+├── state_based_training.ipynb     # Main training notebook
+├── Chrome-Dino-Runner/            # Pygame Dino game (by dhhruv)
+│   ├── chromedino.py             # Game source
+│   └── assets/                    # Game sprites
 └── src/
-    ├── browser_dino_env.py    # Browser-based Gym environment
-    └── dino_game.py           # Legacy Pygame implementation (archived)
+    ├── dino_pygame_env.py        # Pygame Gym environment wrapper
+    ├── dino_state_env.py         # Browser-based environment (legacy)
+    └── dino_game.py              # Original game implementation
 ```
 
 ## 🚀 Getting Started
