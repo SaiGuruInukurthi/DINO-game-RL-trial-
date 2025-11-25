@@ -98,6 +98,7 @@ class BrowserDinoEnv(gym.Env):
         self.score = 0
         self.prev_score = 0
         self.is_game_over = False
+        self.frames_alive = 0
         
     def _init_browser(self, chromedriver_path: Optional[str] = None):
         """Initialize Chrome browser with Selenium"""
@@ -246,41 +247,66 @@ class BrowserDinoEnv(gym.Env):
     
     def _get_score(self) -> int:
         """
-        Extract current score from the game.
-        This needs to be implemented based on the actual game's score display.
+        Extract current score from the game using JavaScript API.
         
         Returns:
-            Current game score
+            Current game score (distance traveled)
         """
         try:
-            # Try to execute JavaScript to get score
-            # This is a placeholder - adjust based on actual game implementation
+            # Access the game's internal distance counter
+            # distanceRan is the actual distance traveled (score)
             score = self.driver.execute_script(
-                "return document.querySelector('.score') ? "
-                "parseInt(document.querySelector('.score').textContent) : 0"
+                "return Runner && Runner.instance_ ? "
+                "Math.floor(Runner.instance_.distanceRan) : 0"
             )
-            return score if score else 0
-        except:
-            return 0
+            return int(score) if score else 0
+        except Exception as e:
+            # Fallback: try to read score from canvas if available
+            try:
+                score_text = self.driver.execute_script(
+                    "return Runner && Runner.instance_ ? "
+                    "Runner.instance_.distanceMeter.getActualDistance(0) : 0"
+                )
+                return int(score_text) if score_text else 0
+            except:
+                return 0
     
     def _is_game_over(self) -> bool:
         """
-        Check if game is over.
-        This needs to be implemented based on the actual game's game-over detection.
+        Check if game is over using JavaScript state detection.
         
         Returns:
-            True if game is over
+            True if game is over (dinosaur crashed)
         """
         try:
-            # Try to detect game over screen
-            # This is a placeholder - adjust based on actual game implementation
-            game_over = self.driver.execute_script(
-                "return document.querySelector('.game-over') !== null || "
-                "document.body.textContent.includes('GAME OVER')"
+            # Primary: Check the game's internal crashed state
+            is_crashed = self.driver.execute_script(
+                "return Runner && Runner.instance_ ? "
+                "Runner.instance_.crashed : false"
             )
-            return bool(game_over)
-        except:
-            return False
+            
+            if is_crashed:
+                return True
+            
+            # Secondary: Check if game is paused (another indicator)
+            is_paused = self.driver.execute_script(
+                "return Runner && Runner.instance_ ? "
+                "Runner.instance_.paused : false"
+            )
+            
+            # Game is over if crashed or paused after starting
+            return bool(is_crashed or (is_paused and self.frames_alive > 10))
+            
+        except Exception as e:
+            # Fallback: Look for restart button visibility
+            try:
+                restart_visible = self.driver.execute_script(
+                    "var btn = document.querySelector('.icon-restart'); "
+                    "return btn ? btn.offsetWidth > 0 : false"
+                )
+                return bool(restart_visible)
+            except:
+                return False
     
     def reset(self, seed: Optional[int] = None) -> Tuple[np.ndarray, dict]:
         """Reset the environment"""
@@ -325,6 +351,7 @@ class BrowserDinoEnv(gym.Env):
         self.score = 0
         self.prev_score = 0
         self.is_game_over = False
+        self.frames_alive = 0
         
         # Get initial observation
         obs = self._get_screenshot()
@@ -351,6 +378,9 @@ class BrowserDinoEnv(gym.Env):
         # Small delay to let action take effect
         time.sleep(0.05)
         
+        # Update frame counter
+        self.frames_alive += 1
+        
         # Get new state
         obs = self._get_screenshot()
         self.score = self._get_score()
@@ -374,6 +404,7 @@ class BrowserDinoEnv(gym.Env):
         truncated = False
         info = {
             'score': self.score,
+            'frames': self.frames_alive,
             'fps': 1.0 / max(time.time() - start_time, 0.001)
         }
         
