@@ -1,9 +1,0 @@
-Training Attempt #1
-Windows: 4
-Resume: False
-Started: 2025-11-25 15:47:23.660964
-Initial ε: 1.0000
-Initial steps: 0
-================================================================================
-
-Ep 1: AvgScore=32, MaxScore=52, Reward=9330.38, ε=0.2080 🏆
