@@ -16,6 +16,7 @@ import numpy as np
 import os
 import pickle
 import random
+import copy
 from datetime import datetime
 
 # Game constants (same as Chrome Dino Runner)
@@ -97,7 +98,8 @@ class DinoGame:
         self.duck_height = 30  # Ducking height
         
         # Game state
-        self.score = 0
+        self.score = 0  # Time-based score (like real Chrome Dino)
+        self.obstacles_passed = 0  # Count of obstacles passed (for reward)
         self.game_speed = 14
         self.game_over = False
         self.steps = 0
@@ -119,7 +121,7 @@ class DinoGame:
             self.obstacles.append({
                 'type': 'cactus',
                 'x': SCREEN_WIDTH + 50,
-                'y': GROUND_Y - height + 50,
+                'y': 380 - height,  # Bottom of cactus sits on ground (y=380)
                 'width': width,
                 'height': height
             })
@@ -137,36 +139,58 @@ class DinoGame:
     def get_state(self):
         """
         Get normalized state for neural network.
-        8 inputs matching the environment.
+        12 inputs: info about 2 nearest obstacles + dino state.
         """
-        # Find nearest obstacle
-        nearest = None
-        nearest_dist = float('inf')
-        
         dino_x = 80  # Dino x position
         
+        # Find the 2 nearest obstacles (sorted by distance)
+        obstacles_ahead = []
         for obs in self.obstacles:
             dist = obs['x'] - dino_x
-            if dist > -50 and dist < nearest_dist:
-                nearest = obs
-                nearest_dist = dist
+            if dist > -50:  # Include obstacles slightly behind (still dangerous)
+                obstacles_ahead.append((dist, obs))
         
-        if nearest is None:
-            # No obstacles - safe state
-            return np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        # Sort by distance and take nearest 2
+        obstacles_ahead.sort(key=lambda x: x[0])
         
-        # Current dino height based on ducking
-        current_height = self.duck_height if self.is_ducking else self.dino_height
+        # Get nearest obstacle (or default values if none)
+        if len(obstacles_ahead) >= 1:
+            dist1, obs1 = obstacles_ahead[0]
+            o1_dist = dist1 / SCREEN_WIDTH
+            o1_width = obs1['width'] / 100.0
+            o1_height = obs1['height'] / 100.0
+            o1_y = (obs1['y'] - (GROUND_Y - 100)) / 100.0
+            o1_bird = 1.0 if obs1['type'] == 'bird' else 0.0
+        else:
+            # No obstacles - safe defaults
+            o1_dist, o1_width, o1_height, o1_y, o1_bird = 1.0, 0.0, 0.0, 0.0, 0.0
+        
+        # Get second nearest obstacle (or default values if none)
+        if len(obstacles_ahead) >= 2:
+            dist2, obs2 = obstacles_ahead[1]
+            o2_dist = dist2 / SCREEN_WIDTH
+            o2_height = obs2['height'] / 100.0
+            o2_bird = 1.0 if obs2['type'] == 'bird' else 0.0
+        else:
+            # No second obstacle - far away defaults
+            o2_dist, o2_height, o2_bird = 1.0, 0.0, 0.0
         
         state = np.array([
-            nearest_dist / SCREEN_WIDTH,                    # 0: Distance to obstacle (normalized)
-            nearest['width'] / 100.0,                       # 1: Obstacle width
-            nearest['height'] / 100.0,                      # 2: Obstacle height
-            (nearest['y'] - (GROUND_Y - 100)) / 100.0,      # 3: Obstacle y position (height for birds)
-            (self.dino_y - GROUND_Y) / 100.0,               # 4: Dino y position (negative when jumping)
-            self.dino_vel_y / 20.0,                         # 5: Dino velocity
-            self.game_speed / 20.0,                         # 6: Game speed
-            1.0 if nearest['type'] == 'bird' else 0.0       # 7: Is bird (1) or cactus (0)
+            # Obstacle 1 (nearest)
+            o1_dist,                                        # 0: Distance to obstacle 1
+            o1_width,                                       # 1: Obstacle 1 width
+            o1_height,                                      # 2: Obstacle 1 height
+            o1_y,                                           # 3: Obstacle 1 y position
+            o1_bird,                                        # 4: Is obstacle 1 a bird?
+            # Obstacle 2 (second nearest)
+            o2_dist,                                        # 5: Distance to obstacle 2
+            o2_height,                                      # 6: Obstacle 2 height
+            o2_bird,                                        # 7: Is obstacle 2 a bird?
+            # Dino state
+            (self.dino_y - GROUND_Y) / 100.0,               # 8: Dino y position
+            self.dino_vel_y / 20.0,                         # 9: Dino velocity
+            self.game_speed / 20.0,                         # 10: Game speed
+            1.0 if self.is_ducking else 0.0                 # 11: Is dino ducking?
         ], dtype=np.float32)
         
         return state
@@ -180,7 +204,7 @@ class DinoGame:
             return self.get_state(), 0, True
         
         self.steps += 1
-        reward = 0.1  # Small reward for surviving
+        reward = 0.25  # Small reward for surviving
         
         # Handle action
         if action == 1 and not self.is_jumping and self.dino_y >= GROUND_Y:
@@ -211,11 +235,15 @@ class DinoGame:
         for obs in self.obstacles:
             obs['x'] -= self.game_speed
         
-        # Remove passed obstacles and add score
+        # Update time-based score (10 points per second at 60fps)
+        if self.steps % 6 == 0:
+            self.score += 1
+        
+        # Remove passed obstacles and count them for reward
         passed = [obs for obs in self.obstacles if obs['x'] < -100]
         if passed:
             reward += 10  # Bonus for passing obstacle
-            self.score += 10 * len(passed)
+            self.obstacles_passed += len(passed)
         
         self.obstacles = [obs for obs in self.obstacles if obs['x'] > -100]
         
@@ -289,8 +317,7 @@ class NEATTrainer:
         # Create population
         self.population = neat.Population(self.config)
         
-        # Add reporters for progress tracking
-        self.population.add_reporter(neat.StdOutReporter(True))
+        # Add statistics reporter (no verbose stdout)
         self.stats = neat.StatisticsReporter()
         self.population.add_reporter(self.stats)
         
@@ -313,6 +340,8 @@ class NEATTrainer:
         Evaluate ALL genomes simultaneously with visual rendering.
         All 250 dinos run at the same time on screen!
         """
+        import time
+        gen_start_time = time.time()
         self.generation += 1
         
         # Create networks and games for ALL genomes
@@ -331,19 +360,21 @@ class NEATTrainer:
                 'game': game,
                 'alive': True,
                 'color': color,
-                'fitness': 0
+                'fitness': 0,
+                'bird_penalty': 0  # Penalty for not ducking when bird approaches
             })
         
         # Shared obstacle system for synchronized gameplay
         shared_obstacles = []
         shared_game_speed = 14
         shared_steps = 0
-        shared_score = 0
+        shared_score = 0  # Time-based score (like real Chrome Dino)
+        obstacles_passed = 0  # Count of obstacles passed
         
         # Spawn initial obstacle
         self._spawn_shared_obstacle(shared_obstacles)
         
-        max_steps = 5000
+        max_steps = 50000  # Increased from 5000 to allow longer runs
         
         while any(d['alive'] for d in dinos) and shared_steps < max_steps:
             shared_steps += 1
@@ -359,10 +390,13 @@ class NEATTrainer:
             for obs in shared_obstacles:
                 obs['x'] -= shared_game_speed
             
-            # Check for passed obstacles
+            # Update time-based score (10 points per second at 60fps)
+            shared_score += 1 if shared_steps % 6 == 0 else 0
+            
+            # Check for passed obstacles (for reward calculation)
             passed = [obs for obs in shared_obstacles if obs['x'] < -100]
             if passed:
-                shared_score += 10 * len(passed)
+                obstacles_passed += len(passed)
             
             shared_obstacles = [obs for obs in shared_obstacles if obs['x'] > -100]
             
@@ -391,7 +425,14 @@ class NEATTrainer:
                 # Get state and action
                 state = game.get_state()
                 output = net.activate(state)
-                action = np.argmax(output)
+                # 2 outputs: [JUMP, DUCK] - use thresholds
+                # If JUMP output > 0.5: jump, elif DUCK output > 0.5: duck, else: run
+                if output[0] > 0.5 and output[0] > output[1]:
+                    action = 1  # JUMP
+                elif output[1] > 0.5:
+                    action = 2  # DUCK
+                else:
+                    action = 0  # RUN (default)
                 
                 # Execute action (physics only, obstacles already synced)
                 self._step_dino_physics(game, action)
@@ -399,11 +440,18 @@ class NEATTrainer:
                 # Check collision
                 if self._check_dino_collision(game, shared_obstacles):
                     dino['alive'] = False
-                    dino['fitness'] = shared_score + shared_steps * 0.1
+                    # Calculate tiered reward bonuses
+                    # +12 for every 100 score, +15 for every 500 score
+                    bonus_100 = (shared_score // 100) * 12
+                    bonus_500 = (shared_score // 500) * 15
+                    milestone_bonus = bonus_100 + bonus_500
+                    reward = (obstacles_passed * 10) + (shared_steps * 0.1) + milestone_bonus
+                    dino['fitness'] = reward
+                    dino['obstacles_passed'] = obstacles_passed
             
             # Render all dinos
             if self.render:
-                self._render_all_dinos(dinos, shared_obstacles, shared_score, shared_game_speed, shared_steps)
+                self._render_all_dinos(dinos, shared_obstacles, shared_score, shared_game_speed, shared_steps, obstacles_passed)
         
         # Set fitness for all genomes
         best_fitness_in_gen = 0
@@ -413,7 +461,15 @@ class NEATTrainer:
         for dino in dinos:
             # If still alive, give them full score
             if dino['alive']:
-                dino['fitness'] = shared_score + shared_steps * 0.1
+                # Calculate tiered reward bonuses
+                # +12 for every 100 score, +15 for every 500 score
+                bonus_100 = (shared_score // 100) * 12
+                bonus_500 = (shared_score // 500) * 15
+                milestone_bonus = bonus_100 + bonus_500
+                # Apply bird penalty for not ducking
+                reward = (obstacles_passed * 10) + (shared_steps * 0.1) + milestone_bonus - dino['bird_penalty']
+                dino['fitness'] = max(0, reward)  # Don't go negative
+                dino['obstacles_passed'] = obstacles_passed
             
             dino['genome'].fitness = dino['fitness']
             scores.append(dino['fitness'])
@@ -426,13 +482,21 @@ class NEATTrainer:
         self.gen_best_scores.append(best_fitness_in_gen)
         self.gen_avg_scores.append(np.mean(scores))
         
-        # Update global best
+        # Update global best - DEEP COPY to preserve it across generations!
         if best_fitness_in_gen > self.best_fitness:
             self.best_fitness = best_fitness_in_gen
-            self.best_genome = best_genome_in_gen
+            self.best_genome = copy.deepcopy(best_genome_in_gen)
+            new_best = " ⭐NEW BEST!"
+        else:
+            new_best = ""
         
-        alive_count = sum(1 for d in dinos if d['alive'])
-        print(f"  Gen {self.generation}: Best={best_fitness_in_gen:.0f}, Avg={np.mean(scores):.0f}, Survived={alive_count}, Best Ever={self.best_fitness:.0f}")
+        # Calculate generation time
+        gen_time = time.time() - gen_start_time
+        
+        # Get species count from population
+        num_species = len(self.population.species.species) if hasattr(self, 'population') else '?'
+        
+        print(f"  Gen {self.generation:3d} | Best: {best_fitness_in_gen:5.0f} | Avg: {np.mean(scores):5.0f} | Best Ever: {self.best_fitness:5.0f} | Species: {num_species} | {gen_time:.1f}s{new_best}")
     
     def _hue_to_rgb(self, hue):
         """Convert hue (0-360) to RGB color"""
@@ -450,7 +514,7 @@ class NEATTrainer:
             obstacles.append({
                 'type': 'cactus',
                 'x': SCREEN_WIDTH + 50,
-                'y': GROUND_Y - height + 50,
+                'y': 380 - height,  # Bottom of cactus sits on ground (y=380)
                 'width': width,
                 'height': height
             })
@@ -510,7 +574,7 @@ class NEATTrainer:
                 y1 + padding < y2 + h2 - padding and
                 y1 + h1 - padding > y2 + padding)
     
-    def _render_all_dinos(self, dinos, obstacles, score, game_speed, steps):
+    def _render_all_dinos(self, dinos, obstacles, score, game_speed, steps, obstacles_passed=0):
         """Render all dinos and shared obstacles"""
         self.screen.fill((255, 255, 255))
         
@@ -581,17 +645,24 @@ class NEATTrainer:
                 pygame.draw.rect(self.screen, color,
                                (dino_x, game.dino_y - current_height + 50, 40, current_height))
         
+        # Calculate current reward for display
+        # Tiered bonuses: +12 per 100 score, +15 per 500 score
+        bonus_100 = (score // 100) * 12
+        bonus_500 = (score // 500) * 15
+        milestone_bonus = bonus_100 + bonus_500
+        current_reward = (obstacles_passed * 10) + (steps * 0.1) + milestone_bonus
+        
         # Draw info overlay
         info_texts = [
-            f"🧬 NEAT Generation: {self.generation}",
+            f"🧬 Gen: {self.generation} | Species: {len(self.population.species.species)}",
             f"Alive: {alive_count}/{len(dinos)}",
-            f"Score: {score}",
-            f"Best Ever: {self.best_fitness:.0f}",
-            f"Species: {len(self.population.species.species)}",
+            f"Score: {score:,}",  # Time-based score (like real game)
+            f"Reward: {current_reward:.0f} (obs:{obstacles_passed} + time:{steps*0.1:.0f})",
+            f"Best Fitness: {self.best_fitness:.0f}",
         ]
         
         # Semi-transparent background for text
-        overlay = pygame.Surface((280, 160))
+        overlay = pygame.Surface((420, 170))
         overlay.set_alpha(200)
         overlay.fill((255, 255, 255))
         self.screen.blit(overlay, (10, 10))
@@ -619,8 +690,15 @@ class NEATTrainer:
         # Run evolution
         winner = self.population.run(self.eval_genomes_parallel, generations)
         
-        print(f"\n🏆 Evolution Complete!")
-        print(f"   Best Fitness: {winner.fitness:.0f}")
+        # Return the BEST OVERALL genome, not just last generation's winner
+        if self.best_genome and self.best_genome.fitness > winner.fitness:
+            winner = self.best_genome
+            print(f"\n🏆 Evolution Complete!")
+            print(f"   Using BEST EVER genome (fitness: {winner.fitness:.0f})")
+        else:
+            print(f"\n🏆 Evolution Complete!")
+            print(f"   Best Fitness: {winner.fitness:.0f}")
+        
         print(f"   Nodes: {len(winner.nodes)}")
         print(f"   Connections: {len([c for c in winner.connections.values() if c.enabled])}")
         
@@ -672,8 +750,7 @@ class NEATTrainer:
         trainer.config = checkpoint['config']
         trainer.population = checkpoint['population']
         
-        # Re-add reporters
-        trainer.population.add_reporter(neat.StdOutReporter(True))
+        # Re-add statistics reporter (no verbose stdout)
         trainer.stats = neat.StatisticsReporter()
         trainer.population.add_reporter(trainer.stats)
         
@@ -692,6 +769,56 @@ class NEATTrainer:
         print(f"✓ Resumed from checkpoint: {checkpoint_path}")
         print(f"   Generation: {trainer.generation}")
         print(f"   Best Fitness: {trainer.best_fitness:.0f}")
+        
+        return trainer
+    
+    @classmethod
+    def from_winner(cls, winner_path, config_path, render=True):
+        """
+        Resume training from a saved winner genome.
+        Creates a new population seeded with mutations of the winner.
+        """
+        import copy
+        
+        # Create a normal trainer first
+        trainer = cls(config_path, render=render)
+        
+        # Load the winner genome
+        with open(winner_path, 'rb') as f:
+            winner = pickle.load(f)
+        
+        # Store as best genome
+        trainer.best_genome = winner
+        trainer.best_fitness = winner.fitness if hasattr(winner, 'fitness') and winner.fitness else 0
+        
+        # Replace population with deep copies of the winner
+        # Keep some exact copies and mutate the rest
+        new_genomes = {}
+        pop_size = trainer.config.pop_size
+        
+        for i in range(pop_size):
+            # Deep copy the winner genome
+            new_genome = copy.deepcopy(winner)
+            new_genome.key = i  # Assign new key
+            new_genome.fitness = None
+            
+            # Mutate half of them (keep 50% as exact copies)
+            if i >= pop_size // 2:
+                new_genome.mutate(trainer.config.genome_config)
+            
+            new_genomes[i] = new_genome
+        
+        # Replace population genomes
+        trainer.population.population = new_genomes
+        trainer.population.species.speciate(
+            trainer.config, 
+            trainer.population.population, 
+            trainer.population.generation
+        )
+        
+        print(f"✓ Loaded winner from: {winner_path}")
+        print(f"   Winner Fitness: {trainer.best_fitness:.0f}")
+        print(f"   Created {pop_size} genomes (50% copies, 50% mutations)")
         
         return trainer
     
@@ -730,9 +857,14 @@ class NEATVisualTester:
                         pygame.quit()
                         return scores
                 
-                # Get action from network
+                # Get action from network (2 outputs: JUMP, DUCK)
                 output = self.net.activate(state)
-                action = np.argmax(output)
+                if output[0] > 0.5 and output[0] > output[1]:
+                    action = 1  # JUMP
+                elif output[1] > 0.5:
+                    action = 2  # DUCK
+                else:
+                    action = 0  # RUN (default)
                 
                 # Step game
                 state, _, done = game.step(action)
@@ -758,9 +890,11 @@ class NEATVisualTester:
                                        (obs['x'], obs['y'], obs['width'], obs['height']))
                 
                 # Info
+                reward = (game.obstacles_passed * 10) + (game.steps * 0.1)
                 texts = [
                     f"🦖 NEAT Test Game {game_num + 1}/{num_games}",
-                    f"Score: {game.score}",
+                    f"Score: {game.score:,}",
+                    f"Reward: {reward:.0f} (obs:{game.obstacles_passed} + time:{game.steps*0.1:.0f})",
                     f"Action: {['RUN', 'JUMP', 'DUCK'][action]}"
                 ]
                 for i, text in enumerate(texts):
@@ -780,12 +914,17 @@ class NEATVisualTester:
         return scores
 
 
-def create_config_file(filepath):
-    """Create NEAT configuration file with optimized settings for Dino game (NEAT 1.0 compatible)"""
-    config_content = """[NEAT]
+def create_config_file(filepath, population_size=250):
+    """Create NEAT configuration file with optimized settings for Dino game (NEAT 1.0 compatible)
+    
+    Args:
+        filepath: Path to save the config file
+        population_size: Number of genomes in the population (default 250)
+    """
+    config_content = f"""[NEAT]
 fitness_criterion     = max
 fitness_threshold     = 10000
-pop_size              = 250
+pop_size              = {population_size}
 reset_on_extinction   = True
 no_fitness_termination = False
 
@@ -815,12 +954,12 @@ compatibility_disjoint_coefficient = 1.0
 compatibility_weight_coefficient   = 0.52
 
 # Connection add/remove rates
-conn_add_prob           = 0.5
-conn_delete_prob        = 0.2
+conn_add_prob           = 0.3
+conn_delete_prob        = 0.1
 
 # Connection enable options
 enabled_default              = True
-enabled_mutate_rate          = 0.1
+enabled_mutate_rate          = 0.05
 enabled_rate_to_true_add     = 0.0
 enabled_rate_to_false_add    = 0.0
 
@@ -828,13 +967,13 @@ feed_forward            = True
 initial_connection      = full_direct
 
 # Node add/remove rates
-node_add_prob           = 0.3
-node_delete_prob        = 0.1
+node_add_prob           = 0.15
+node_delete_prob        = 0.05
 
 # Network parameters
 num_hidden              = 0
-num_inputs              = 8
-num_outputs             = 3
+num_inputs              = 12
+num_outputs             = 2
 
 # Node response options
 response_init_mean      = 1.0
@@ -852,8 +991,8 @@ weight_init_stdev       = 1.0
 weight_init_type        = gaussian
 weight_max_value        = 30
 weight_min_value        = -30
-weight_mutate_power     = 0.5
-weight_mutate_rate      = 0.8
+weight_mutate_power     = 0.3
+weight_mutate_rate      = 0.7
 weight_replace_rate     = 0.1
 
 # Structural mutation (NEAT 1.0 required)
@@ -865,13 +1004,13 @@ compatibility_threshold = 3.0
 
 [DefaultStagnation]
 species_fitness_func = max
-max_stagnation       = 15
-species_elitism      = 2
+max_stagnation       = 20
+species_elitism      = 5
 
 [DefaultReproduction]
-elitism            = 3
-survival_threshold = 0.2
-min_species_size   = 2
+elitism            = 25
+survival_threshold = 0.3
+min_species_size   = 5
 """
     
     with open(filepath, 'w') as f:
