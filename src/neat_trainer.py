@@ -85,7 +85,8 @@ class DinoGame:
     Each genome gets its own game instance.
     """
     
-    def __init__(self):
+    def __init__(self, start_speed=14):
+        self.start_speed = start_speed
         self.reset()
     
     def reset(self):
@@ -100,7 +101,7 @@ class DinoGame:
         # Game state
         self.score = 0  # Time-based score (like real Chrome Dino)
         self.obstacles_passed = 0  # Count of obstacles passed (for reward)
-        self.game_speed = 14
+        self.game_speed = self.start_speed  # Configurable starting speed
         self.game_over = False
         self.steps = 0
         
@@ -112,7 +113,8 @@ class DinoGame:
     
     def spawn_obstacle(self):
         """Spawn a cactus or bird"""
-        obstacle_type = random.choice(['cactus', 'cactus', 'cactus', 'bird'])  # 75% cactus
+        # 50% cactus, 50% bird (increased bird frequency)
+        obstacle_type = random.choice(['cactus', 'bird'])
         
         if obstacle_type == 'cactus':
             # Cactus variations
@@ -126,8 +128,15 @@ class DinoGame:
                 'height': height
             })
         else:
-            # Bird at different heights
-            bird_y = random.choice([GROUND_Y - 60, GROUND_Y - 100, GROUND_Y - 140])
+            # Bird at different heights - more middle birds!
+            # Low (duck under), Middle (duck or jump), High (run under)
+            bird_y = random.choice([
+                GROUND_Y - 60,   # Low - must duck
+                GROUND_Y - 100,  # Middle - must duck (most common)
+                GROUND_Y - 100,  # Middle - extra weight
+                GROUND_Y - 100,  # Middle - extra weight  
+                GROUND_Y - 140   # High - can run under
+            ])
             self.obstacles.append({
                 'type': 'bird',
                 'x': SCREEN_WIDTH + 50,
@@ -294,9 +303,10 @@ class NEATTrainer:
     - Historical markings track gene origins
     """
     
-    def __init__(self, config_path, render=True):
+    def __init__(self, config_path, render=True, start_speed=14):
         self.config_path = config_path
         self.render = render
+        self.start_speed = start_speed  # Configurable starting game speed
         self.generation = 0
         self.best_genome = None
         self.best_fitness = 0
@@ -366,7 +376,7 @@ class NEATTrainer:
         
         # Shared obstacle system for synchronized gameplay
         shared_obstacles = []
-        shared_game_speed = 14
+        shared_game_speed = self.start_speed  # Use configurable starting speed
         shared_steps = 0
         shared_score = 0  # Time-based score (like real Chrome Dino)
         obstacles_passed = 0  # Count of obstacles passed
@@ -437,6 +447,18 @@ class NEATTrainer:
                 # Execute action (physics only, obstacles already synced)
                 self._step_dino_physics(game, action)
                 
+                # Bird penalty: if a low/middle bird is close and dino is NOT ducking, penalize
+                for obs in shared_obstacles:
+                    if obs['type'] == 'bird':
+                        bird_dist = obs['x'] - 80  # Distance from dino (dino_x = 80)
+                        bird_y = obs['y']
+                        # Only penalize for low/middle birds that require ducking
+                        # High birds (y <= GROUND_Y - 120) can be run under
+                        if bird_y > GROUND_Y - 120:  # Low or middle bird
+                            if 50 < bird_dist < 150:  # Bird is approaching (danger zone)
+                                if not game.is_ducking and not game.is_jumping:
+                                    dino['bird_penalty'] += 30  # Penalty for not ducking!
+                
                 # Check collision
                 if self._check_dino_collision(game, shared_obstacles):
                     dino['alive'] = False
@@ -445,8 +467,8 @@ class NEATTrainer:
                     bonus_100 = (shared_score // 100) * 12
                     bonus_500 = (shared_score // 500) * 15
                     milestone_bonus = bonus_100 + bonus_500
-                    reward = (obstacles_passed * 10) + (shared_steps * 0.1) + milestone_bonus
-                    dino['fitness'] = reward
+                    reward = (obstacles_passed * 10) + (shared_steps * 0.1) + milestone_bonus - dino['bird_penalty']
+                    dino['fitness'] = max(0, reward)  # Don't go negative
                     dino['obstacles_passed'] = obstacles_passed
             
             # Render all dinos
@@ -496,7 +518,7 @@ class NEATTrainer:
         # Get species count from population
         num_species = len(self.population.species.species) if hasattr(self, 'population') else '?'
         
-        print(f"  Gen {self.generation:3d} | Best: {best_fitness_in_gen:5.0f} | Avg: {np.mean(scores):5.0f} | Best Ever: {self.best_fitness:5.0f} | Species: {num_species} | {gen_time:.1f}s{new_best}")
+        print(f"  Gen {self.generation:3d} | Best: {best_fitness_in_gen:5.0f} | Avg: {np.mean(scores):5.0f} | Best Ever: {self.best_fitness:5.0f} | Species: {num_species} | {gen_time:.1f}s{new_best}", flush=True)
     
     def _hue_to_rgb(self, hue):
         """Convert hue (0-360) to RGB color"""
@@ -506,7 +528,8 @@ class NEATTrainer:
     
     def _spawn_shared_obstacle(self, obstacles):
         """Spawn obstacle to shared obstacle list"""
-        obstacle_type = random.choice(['cactus', 'cactus', 'cactus', 'bird'])
+        # 50% cactus, 50% bird (increased bird frequency)
+        obstacle_type = random.choice(['cactus', 'bird'])
         
         if obstacle_type == 'cactus':
             width = random.choice([20, 40, 60])
@@ -519,7 +542,14 @@ class NEATTrainer:
                 'height': height
             })
         else:
-            bird_y = random.choice([GROUND_Y - 60, GROUND_Y - 100, GROUND_Y - 140])
+            # Bird at different heights - more middle birds!
+            bird_y = random.choice([
+                GROUND_Y - 60,   # Low - must duck
+                GROUND_Y - 100,  # Middle - must duck (most common)
+                GROUND_Y - 100,  # Middle - extra weight
+                GROUND_Y - 100,  # Middle - extra weight
+                GROUND_Y - 140   # High - can run under
+            ])
             obstacles.append({
                 'type': 'bird',
                 'x': SCREEN_WIDTH + 50,
@@ -682,10 +712,10 @@ class NEATTrainer:
     
     def run(self, generations=100):
         """Run NEAT evolution for specified generations"""
-        print(f"\n🧬 Starting NEAT Evolution for {generations} generations...")
+        print(f"\n🧬 Starting NEAT Evolution for {generations} generations...", flush=True)
         print(f"   Population: {self.config.pop_size}")
-        print(f"   Inputs: 8 | Outputs: 3")
-        print("="*60)
+        print(f"   Start Speed: {self.start_speed}")
+        print("="*60, flush=True)
         
         # Run evolution
         winner = self.population.run(self.eval_genomes_parallel, generations)
@@ -773,15 +803,22 @@ class NEATTrainer:
         return trainer
     
     @classmethod
-    def from_winner(cls, winner_path, config_path, render=True):
+    def from_winner(cls, winner_path, config_path, render=True, start_speed=14, stats_path=None):
         """
         Resume training from a saved winner genome.
         Creates a new population seeded with mutations of the winner.
+        
+        Args:
+            winner_path: Path to saved winner genome
+            config_path: Path to NEAT config file
+            render: Whether to render the game
+            start_speed: Starting game speed
+            stats_path: Optional path to stats file to restore generation count
         """
         import copy
         
         # Create a normal trainer first
-        trainer = cls(config_path, render=render)
+        trainer = cls(config_path, render=render, start_speed=start_speed)
         
         # Load the winner genome
         with open(winner_path, 'rb') as f:
@@ -791,8 +828,22 @@ class NEATTrainer:
         trainer.best_genome = winner
         trainer.best_fitness = winner.fitness if hasattr(winner, 'fitness') and winner.fitness else 0
         
+        # Load generation count from stats if provided
+        if stats_path and os.path.exists(stats_path):
+            try:
+                with open(stats_path, 'rb') as f:
+                    stats = pickle.load(f)
+                trainer.generation = stats.get('generations', 0)
+                trainer.gen_best_scores = stats.get('best_scores', [])
+                trainer.gen_avg_scores = stats.get('avg_scores', [])
+                print(f"✓ Restored stats from: {stats_path}")
+                print(f"   Resuming from generation {trainer.generation}")
+            except Exception as e:
+                print(f"⚠ Could not load stats: {e}")
+        
         # Replace population with deep copies of the winner
         # Keep some exact copies and mutate the rest
+        print(f"⏳ Creating {trainer.config.pop_size} genomes from winner...", flush=True)
         new_genomes = {}
         pop_size = trainer.config.pop_size
         
@@ -809,6 +860,7 @@ class NEATTrainer:
             new_genomes[i] = new_genome
         
         # Replace population genomes
+        print(f"⏳ Speciation...", flush=True)
         trainer.population.population = new_genomes
         trainer.population.species.speciate(
             trainer.config, 
@@ -914,12 +966,14 @@ class NEATVisualTester:
         return scores
 
 
-def create_config_file(filepath, population_size=250):
+def create_config_file(filepath, population_size=250, mutation_rate=0.7, elitism=25):
     """Create NEAT configuration file with optimized settings for Dino game (NEAT 1.0 compatible)
     
     Args:
         filepath: Path to save the config file
         population_size: Number of genomes in the population (default 250)
+        mutation_rate: Rate of weight/bias mutations 0.0-1.0 (default: 0.7)
+        elitism: Number of top genomes preserved each generation (default: 25)
     """
     config_content = f"""[NEAT]
 fitness_criterion     = max
@@ -946,7 +1000,7 @@ bias_init_type          = gaussian
 bias_max_value          = 30.0
 bias_min_value          = -30.0
 bias_mutate_power       = 0.5
-bias_mutate_rate        = 0.7
+bias_mutate_rate        = {mutation_rate}
 bias_replace_rate       = 0.1
 
 # Genome compatibility options
@@ -992,7 +1046,7 @@ weight_init_type        = gaussian
 weight_max_value        = 30
 weight_min_value        = -30
 weight_mutate_power     = 0.3
-weight_mutate_rate      = 0.7
+weight_mutate_rate      = {mutation_rate}
 weight_replace_rate     = 0.1
 
 # Structural mutation (NEAT 1.0 required)
@@ -1008,7 +1062,7 @@ max_stagnation       = 20
 species_elitism      = 5
 
 [DefaultReproduction]
-elitism            = 25
+elitism            = {elitism}
 survival_threshold = 0.3
 min_species_size   = 5
 """

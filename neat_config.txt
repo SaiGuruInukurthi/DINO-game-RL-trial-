@@ -1,7 +1,7 @@
 [NEAT]
 fitness_criterion     = max
 fitness_threshold     = 10000
-pop_size              = 500
+pop_size              = 100
 reset_on_extinction   = True
 no_fitness_termination = False
 
@@ -23,7 +23,7 @@ bias_init_type          = gaussian
 bias_max_value          = 30.0
 bias_min_value          = -30.0
 bias_mutate_power       = 0.5
-bias_mutate_rate        = 0.7
+bias_mutate_rate        = 0.5
 bias_replace_rate       = 0.1
 
 # Genome compatibility options
@@ -69,7 +69,7 @@ weight_init_type        = gaussian
 weight_max_value        = 30
 weight_min_value        = -30
 weight_mutate_power     = 0.3
-weight_mutate_rate      = 0.7
+weight_mutate_rate      = 0.5
 weight_replace_rate     = 0.1
 
 # Structural mutation (NEAT 1.0 required)
@@ -85,6 +85,6 @@ max_stagnation       = 20
 species_elitism      = 5
 
 [DefaultReproduction]
-elitism            = 25
+elitism            = 30
 survival_threshold = 0.3
 min_species_size   = 5
