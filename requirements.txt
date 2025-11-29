@@ -1,20 +1,13 @@
-# Dino RL Project Dependencies
+# Dino RL Project Dependencies (NEAT Training)
 
 # Core dependencies
 numpy>=1.21.0
 pygame>=2.1.0
-gymnasium>=0.29.0
+neat-python>=0.92
 
-# Browser automation
-selenium>=4.0.0
-pillow>=9.0.0
-
-# Deep Learning (TensorFlow)
-tensorflow>=2.13.0
-
-# Utilities
+# Visualization
 matplotlib>=3.5.0
-opencv-python>=4.8.0
 
-# Optional: for faster image processing
-# scikit-image>=0.19.0
+# Optional: for Jupyter notebook
+jupyter>=1.0.0
+ipykernel>=6.0.0
